@@ -1,5 +1,6 @@
 (* PA5c *)
 open Printf
+open Str
 
 type cool_program = cool_class list
 and loc = string
@@ -96,6 +97,19 @@ let parent_map = ref ([] : parent_map)
 
 (* Evaluation *)
 (* Convert expressions to strings for debugging *)
+let replace_all str pattern replacement =
+  let rec replace_rec str =
+    try
+      let index = String.index str pattern.[0] in
+      if String.sub str index (String.length pattern) = pattern then
+        let prefix = String.sub str 0 index in
+        let suffix = String.sub str (index + (String.length pattern)) (String.length str - index - (String.length pattern)) in
+        prefix ^ replacement ^ (replace_rec suffix)
+      else
+        str
+    with Not_found -> str
+  in
+  replace_rec str
 
 let rec exp_to_str (_,e) = 
   match e with
@@ -125,12 +139,12 @@ let value_to_str v =
   match v with
   | Cool_Int(i) -> sprintf "%ld" i
   | Cool_Bool(b) -> sprintf "Bool%b" b
-  | Cool_String(s) -> sprintf "%s" s
+  | Cool_String(s) -> sprintf "%s" (replace_all s "\\n" "\n")
   | Cool_Object(cname, attrs) -> 
       let attr_str = List.fold_left (fun acc (aname, aaddr) -> 
         sprintf "%s, %s=%d, " acc aname aaddr) "" attrs in 
         sprintf "%s(%s)" cname attr_str
-  | Void -> sprintf "Void"
+  | Void -> sprintf "Void" 
 
 let enviroment_to_str env = 
   let binding_str = List.fold_left (fun acc (aname, addr) -> 
@@ -143,7 +157,7 @@ let store_to_str store =
     sprintf "[%s]" binding_str
 
     (* Debugging and Tracing*)
-let do_debug = true
+let do_debug = false
 
 let debug fmt = 
   let handle result_string = 
@@ -198,7 +212,6 @@ let rec eval (so : cool_value )
   ) s2 attrs_and_inits in
   v1, final_store
   | Variable(vname) ->
-  printf "vname: %s\n" vname;
   let l = List.assoc vname env in
   let final_value = List.assoc l s in
   final_value, s
@@ -321,22 +334,32 @@ let rec eval (so : cool_value )
       current_store := arg_store;
       arg_val
     ) args in
-    let v0, sn1 = eval so !current_store env (eloc, Variable("self")) in
-    (begin match v0 with 
-      | Cool_Object(cname, attrs_andlocs) ->
-        (* FIX check to make sure it is in there if its not you have a pa5 bug *)
-        let class_methods = List.assoc cname !impl_map in
-        let formals, body  = List.assoc fname class_methods in
-        let new_arg_locs = List.map (fun arg_val -> 
-          new_loc()
-        ) args in 
-        let store_updates = List.combine new_arg_locs arg_vals in
-        let s_n3 = store_updates @sn1 in
-        eval v0 s_n3 attrs_andlocs body
-      | _ -> failwith "Type error"
-        end)
-  | String(s) -> Cool_String(s)
-  | Internal(extra_info) -> Void
+    debug "Self_Dispatch: %s\n" fname;
+    (match fname with 
+    | "out_string" -> (match List.hd arg_vals with
+      | Cool_String(str) -> Cool_String(str), s
+      | _ -> failwith "Type error")
+    )
+      (* |_ -> let v0, sn1 = eval so !current_store env (eloc, ) in
+      (begin match v0 with 
+        | Cool_Object(cname, attrs_andlocs) ->
+          (* FIX check to make sure it is in there if its not you have a pa5 bug *)
+          let class_methods = List.assoc cname !impl_map in
+          let formals, body  = List.assoc fname class_methods in
+          let new_arg_locs = List.map (fun arg_val -> 
+            new_loc()
+          ) args in 
+          let store_updates = List.combine new_arg_locs arg_vals in
+          let s_n3 = store_updates @sn1 in
+          eval v0 s_n3 attrs_andlocs body
+          v0, s_n3
+        | _ -> failwith "Type error"
+          end) *)
+  | String(str) -> Cool_String(str), s
+  | Internal(extra_info) -> 
+    debug "Internal: %s\n" extra_info;
+    match extra_info with
+    |_ -> failwith "Not implemented"
   | _ -> failwith "Not implemented"
   in
   debug_indent(); debug "result: %s\n" (value_to_str new_value);
@@ -500,7 +523,7 @@ let main() = begin
         let mloc = read() in
         let mname = read() in
         let args = read_list read_exp in
-        Self_Dispatch("mname", args)
+        Self_Dispatch(mname, args)
       | "variable" ->
         let vname = read() in
         Variable(vname)
