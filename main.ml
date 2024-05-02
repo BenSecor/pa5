@@ -16,8 +16,7 @@ and exp = loc * ekind
 
 and ekind = 
     | New of string (* new point*)
-    | Dispatch of exp * string * (exp list) (* self.foo(a1, a2, ... an) *)
-    | Self_Dispatch of string * (exp list) (* foo(a1, a2, ... an) *)
+    | Dispatch of exp option  * string * (exp list) (* self.foo(a1, a2, ... an) *)
     | String of string (* "hello" *)
     | Variable of string (* x *)
     | Integer of Int32.t (* 1 *)
@@ -26,6 +25,7 @@ and ekind =
     | Times of exp * exp (* e1 * e2 *)
     | Divide of exp * exp (* e1 / e2 *)
     | LessThan of exp * exp (* e1 < e2 *)
+    | LessThanEq of exp * exp (* e1 <= e2 *)
     | Equal of exp * exp (* e1 = e2 *)
     | Not of exp (* not e *)
     | IsVoid of exp (* isvoid e *)
@@ -67,10 +67,6 @@ type enviroment = (string * cool_address) list
 (* Store: Maps Cool  Addresses  -> Cool values  *)
 type store = (cool_address * cool_value) list
 
-let new_location_counter = ref 1000
-let new_loc() = 
-  incr new_location_counter;
-  !new_location_counter
 
 (* Class Map  *)
 (* Maps class names to a list of attributes and their types *)
@@ -94,15 +90,6 @@ let parent_map = ref ([] : parent_map)
 
 (* Evaluation *)
 (* Convert expressions to strings for debugging *)
-
-(* Evaluation *)
-(* Convert expressions to strings for debugging *)
-
-(* Evaluation *)
-(* Convert expressions to strings for debugging *)
-
-(* Evaluation *)
-(* Convert expressions to strings for debugging *)
 let replace_all str pattern replacement =
   let rec replace_rec str =
     try
@@ -120,8 +107,8 @@ let replace_all str pattern replacement =
 let rec exp_to_str (_,e) = 
   match e with
   | New(x) -> sprintf "New(%s)" x
-  | Dispatch(e0, fname, args) -> sprintf "Dispatch(%s, %s, [%s])" (exp_to_str e0) fname (String.concat "; " (List.map exp_to_str args))
-  | Self_Dispatch(fname, args) -> sprintf "Self_Dispatch(%s, [%s])" fname (String.concat "; " (List.map exp_to_str args))
+  | Dispatch(Some(e0), fname, args) -> sprintf "Dispatch(%s, %s, [%s])" (exp_to_str e0) fname (String.concat "; " (List.map exp_to_str args))
+  | Dispatch(None, fname, args) -> sprintf "Dispatch(NONE, %s, [%s])" fname (String.concat "; " (List.map exp_to_str args))
   | Variable(x) -> sprintf "Var(%s) \n" x
   | Integer(i) -> Int32.to_string i
   | Plus(e1, e2) -> sprintf "%s + %s" (exp_to_str e1) (exp_to_str e2)
@@ -129,6 +116,7 @@ let rec exp_to_str (_,e) =
   | Times(e1, e2) -> sprintf "%s * %s" (exp_to_str e1) (exp_to_str e2)
   | Divide(e1, e2) -> sprintf "%s / %s" (exp_to_str e1) (exp_to_str e2)
   | LessThan(e1, e2) -> sprintf "%s < %s" (exp_to_str e1) (exp_to_str e2)
+  | LessThanEq(e1, e2) -> sprintf "%s <= %s" (exp_to_str e1) (exp_to_str e2)
   | Equal(e1, e2) -> sprintf "%s = %s" (exp_to_str e1) (exp_to_str e2)
   | Not(e) -> sprintf "not %s" (exp_to_str e)
   | IsVoid(e) -> sprintf "isvoid %s" (exp_to_str e)
@@ -136,7 +124,7 @@ let rec exp_to_str (_,e) =
   | While(e1, e2) -> sprintf "while %s loop %s pool" (exp_to_str e1) (exp_to_str e2)
   | Block(el) -> sprintf "Block{%s}" (String.concat "; " (List.map exp_to_str el))
   | Let(bindings, e1) -> sprintf "let bindings: [%s] , Exp %s" (String.concat "; " (List.map let_binding_to_str bindings)) (exp_to_str e1)
-  | Case(e, cl) -> sprintf "case %s of %s esac" (exp_to_str e) (String.concat "; " (List.map (fun (x, t, e) -> sprintf "%s : %s => %s" x t (exp_to_str e)) cl))
+  | Case(exp, cl) -> sprintf "case %s of %s esac" (exp_to_str exp) (String.concat "; " (List.map (fun (x, t, e) -> sprintf "%s : %s => %s" x t (exp_to_str e)) cl))
   | Assign(x, e) -> sprintf "Assign(%s <- %s)" x (exp_to_str e)
   | Internal(extra_info) -> sprintf "Internal(%s)" extra_info
   | String(s) -> sprintf "String(%s)" s
@@ -170,6 +158,7 @@ let store_to_str store =
     (* Debugging and Tracing*)
 let do_debug = true
 
+
 let debug fmt = 
   let handle result_string = 
     (* fix this line *)
@@ -181,7 +170,41 @@ let indent_count = ref 0
 let debug_indent() = 
   debug "%s" (String.make (!indent_count) ' ')
 
+let new_location_counter = ref 1000
+let new_loc() = 
+  debug "new_loc\n";
+  incr new_location_counter;
+  !new_location_counter
+
+  (* Evaluation *)
+let is_subtype c t =
+  let rec is_subtype_helper c t = 
+    debug "is_subtype_helper: %s %s\n" c t;
+    if c = t then true 
+    else
+      if c = "Object" then false
+      else 
+        match List.assoc c !parent_map with
+        | p -> is_subtype_helper p t
+        | _ -> false
+  in
+  is_subtype_helper c t
+
+let compare_subtype t1 t2 =
+  debug "compare_subtype: %s %s\n" t1 t2;
+  if is_subtype t1 t2 then -1
+  else if is_subtype t2 t1 then 1
+  else 0
+
 (* Evaluation *)
+(* Evaluate an expression in a given enviroment and store *)
+(* Returns a new value and a new store *)
+(* FIX ME:  ADD SELF TYPE *)
+
+(* Evaluation *)
+(* Evaluate an expression in a given enviroment and store *)
+(* Returns a new value and a new store *)
+(* FIX ME:  ADD SELF TYPE *)
 
 let rec eval (so : cool_value )
        (s : store)
@@ -199,32 +222,44 @@ let rec eval (so : cool_value )
   let (new_value, new_store) = match exp with
   (* need to add self type *)
   | New(class_name) -> 
-  let attrs_and_inits = List.assoc class_name !class_map in
-  let new_attr_loc = List.map (fun (aname, ainit) -> 
-    new_loc()
-  ) attrs_and_inits in
-  let attr_names = List.map (fun (aname, ainit) -> aname) attrs_and_inits in
-  let attrs_and_locs = List.combine attr_names new_attr_loc in
-  let v1 = Cool_Object(class_name, List.combine attr_names new_attr_loc) in
-  (* DO THIS : Default Values based on the class_names, cool manual*)
-  let store_updates = List.map (fun new_loc -> 
-      (new_loc, Cool_Int(0l)) 
-  ) new_attr_loc in 
-  let s2 = s @ store_updates in
-  let final_store = List.fold_left (fun acc_store (aname, ainit) -> 
-    debug "aname: %s\n" aname;
-    match ainit with
-    | None -> acc_store 
-    | Some(ainit) -> 
-      let _, updated_store = eval v1 acc_store attrs_and_locs (eloc, Assign(aname, ainit)) in
-    updated_store
-    (*none case *)
-  ) s2 attrs_and_inits in
-  v1, final_store
+    debug "new class_name: %s\n" class_name;
+    begin
+    match class_name with
+    | "Int" -> Cool_Int(0l), s
+    | "Bool" -> Cool_Bool(false), s
+    | "String" -> Cool_String(""), s
+    | _ -> 
+        let attrs_and_inits = List.assoc class_name !class_map in
+        let new_attr_loc = List.map (fun (aname, ainit) -> 
+            new_loc()
+        ) attrs_and_inits in
+        let store_updates = List.map (fun new_loc -> 
+          (new_loc, Cool_Int(0l)) 
+        ) new_attr_loc in 
+        let s2 = s @ store_updates in
+        let attr_names = List.map (fun (aname, ainit) -> aname) attrs_and_inits in
+        let ainits = List.map (fun (aname, ainit) -> ainit) attrs_and_inits in
+        let attrs_and_locs = List.combine attr_names new_attr_loc in
+        let v1 = Cool_Object(class_name, attrs_and_locs) in
+        let final_store = List.fold_left (fun acc_store (aname, ainit) -> 
+            debug "aname: %s\n" aname;
+            match ainit with
+            | None -> 
+              debug "ainit with NONE: %s\n" aname;
+              acc_store 
+            | Some(ainit) -> 
+                let _, updated_store = eval v1 acc_store attrs_and_locs (eloc, Assign(aname, ainit)) in
+                updated_store
+        ) s2 attrs_and_inits in
+        v1, final_store
+    end
   | Variable(vname) ->
-  let l = List.assoc vname env in
-  let final_value = List.assoc l s in
-  final_value, s
+    (match vname with 
+    | "self" -> so, s
+    | _ ->
+      let location = List.assoc vname env in
+      let final_value = List.assoc location s in
+      final_value, s)
   | Integer(i) -> Cool_Int(i), s
   | Plus(e1, e2) -> 
   let (v1, s1) = eval so s env e1 in 
@@ -248,6 +283,7 @@ let rec eval (so : cool_value )
   let (v1, s1) = eval so s env e1 in
   let (v2, s2) = eval so s1 env e2 in
   (match (v1, v2) with
+  | (Cool_Int(i1), Cool_Int(0l)) -> failwith "ERROR: %s:Exception: Division by Zero" eloc;
   | (Cool_Int(i1), Cool_Int(i2)) -> (Cool_Int(Int32.div i1 i2), s2)
   | _ -> failwith "Type error")
   | LessThan(e1, e2) ->
@@ -256,6 +292,12 @@ let rec eval (so : cool_value )
   (match (v1, v2) with
   | (Cool_Int(i1), Cool_Int(i2)) -> (Cool_Bool(i1 < i2), s2)
   | _ -> failwith "Type error")
+  | LessThanEq(e1, e2) ->
+    let (v1, s1) = eval so s env e1 in
+    let (v2, s2) = eval so s1 env e2 in
+    (match (v1, v2) with
+    | (Cool_Int(i1), Cool_Int(i2)) -> (Cool_Bool(i1 <= i2), s2)
+    | _ -> failwith "Type error")
   | Equal(e1, e2) ->
   let (v1, s1) = eval so s env e1 in
   let (v2, s2) = eval so s1 env e2 in
@@ -286,103 +328,180 @@ let rec eval (so : cool_value )
   | While(e1, e2) ->
   let (v1, s1) = eval so s env e1 in 
   (match v1 with 
-  | Cool_Bool(true) -> 
-    let (v2, s2) = eval so s1 env e2 in 
-    eval so s2 env (eloc, While(e1, e2))
-  | Cool_Bool(false) -> (Void, s1)
-  | _ -> failwith "Type error")
+    | Cool_Bool(true) -> 
+      let (v2, s2) = eval so s1 env e2 in 
+      eval so s2 env (eloc, While(e1, e2))
+    | Cool_Bool(false) -> (Void, s1)
+    | _ -> failwith "Type error")
   | Block(el) ->
   let (v, s1) = List.fold_left (fun (acc_val, acc_store) e -> 
     eval so acc_store env e) (Void, s) el in 
     (v, s1)
   | Let(bindings, e1) ->
-  let (v1, s1) = eval so s env e1 in 
-  (* # NEED TO HANDLE binding_str *)
-  let new_addr = List.length s1 in 
-  let new_store = s1 @ [(new_addr, v1)] in 
-  eval so new_store env e1
-  (* | Case(e, cl) ->
-  let (v, s1) = eval so s env e in 
-  (match v with 
-  | Cool_Object(cname, attrs) -> 
-    let (x, t, e) = List.assoc cname cl in 
-    let new_addr = List.length s1 in 
-    let new_env = (x, new_addr) :: so in 
-    let new_store = s1 @ [(new_addr, v)] in 
-    eval new_env new_store e
-  | _ -> failwith "Type error") *)
+      let new_store = s in
+      let new_env, new_store = List.fold_left (fun (acc_env, acc_store) b -> 
+        match b with 
+        | LetBindingInit((x, t, e)) -> 
+          let (v, s1) = eval so acc_store acc_env e in 
+          let new_loc = new_loc() in 
+          let new_env = (snd x, new_loc) :: acc_env in 
+          let new_store = (new_loc, v) :: s1 in 
+          new_env, new_store
+        | LetBindingNoInit((x, t)) -> 
+          debug "NO INIT x: %s\n" (snd x);
+          debug "NO INIT TYPE: %s\n" (snd t);
+          (* let (v, s1) = eval so acc_store acc_env New(t) in  *)
+          let new_loc = new_loc() in
+          let new_env = (snd x, new_loc) :: acc_env in 
+          let v = 
+            begin match snd t with
+            | "Int" -> Cool_Int(0l)
+            | "Bool" -> Cool_Bool(false)
+            | "String" -> Cool_String("")
+            | _ -> failwith "Type error";
+            end in
+          let new_store = (new_loc, v) :: new_store in 
+          new_env, new_store
+      ) (env, new_store) bindings in
+      eval so new_store new_env e1 
+  | Case(e1, branches) ->
+    debug "case e1: %s\n" (exp_to_str e1);
+    let v, s = eval so s env e1 in
+    let c = begin match v with 
+      | Cool_Object(cname, _) -> cname
+      | Cool_String(_) -> "String"
+      | Cool_Int(_) -> "Int"
+      | Cool_Bool(_) -> "Bool"
+      | Void -> "Void"
+      | _ -> failwith "Type error"
+    end in
+    (* Sort branches based on subtype relationship *)
+    let sorted_branches = List.sort (fun (_, t1, _) (_, t2, _) ->
+      compare_subtype t1 t2
+    ) branches in 
+    let rec evaluate_branches = function
+      | [] -> failwith "Error: No matching branch found in case expression."
+      | (x, t, e) :: rest ->
+          if is_subtype c t then
+            let new_loc = new_loc() in
+            let new_env = (x, new_loc) :: env in
+            let new_store = (new_loc, v) :: s in
+            let result_v, result_s = eval so new_store new_env e in
+            result_v, result_s
+          else
+            evaluate_branches rest
+    in
+    evaluate_branches sorted_branches
   | Assign(vname, rhs) ->
-  let v1, s2 = eval so s env rhs in 
-  let l1 = List.assoc vname env in
-  let s3 = (l1, v1) :: List.remove_assoc l1 s2 in
-  v1, s3
-  | Dispatch(e0, fname, args) -> 
+    debug "assign: %s\n" vname;
+    let v1, s2 = eval so s env rhs in 
+    let l1 = List.assoc vname env in
+    let s3 = (l1, v1) :: s2 in
+    v1, s3
+  | Dispatch(_, fname, args) -> 
     let current_store = ref s in
+    let v0 = begin match exp with
+      | Dispatch(Some(e0), _, _) ->let v, s = eval so !current_store env e0 in current_store := s ; v
+      | _ -> so
+    end in
     let arg_vals = List.map (fun arg_exp -> 
       let arg_val, arg_store = eval so !current_store env arg_exp in
       current_store := arg_store;
       arg_val
     ) args in
-    let v0, sn1 = eval so !current_store env e0 in
-    debug "V0: %s\n" (value_to_str v0);
+    debug "v0 = %s\n" (value_to_str v0);
     (begin match v0 with 
       | Cool_Object(cname, attrs_andlocs) ->
         (* FIX check to make sure it is in there if its not you have a pa5 bug *)
-        let class_methods = List.assoc cname !impl_map in
-        let formals, body  = List.assoc fname class_methods in
-        let new_arg_locs = List.map (fun arg_val -> 
-          new_loc()
-        ) args in 
-        let store_updates = List.combine new_arg_locs arg_vals in
-        let s_n3 = store_updates @sn1 in
-        eval v0 s_n3 attrs_andlocs body
-      | _ -> failwith "Type error"
+          debug "fname = %s " fname;
+        (begin match fname with 
+          | "out_string" ->
+            output_string stdout (value_to_str (List.hd arg_vals));
+            so, s
+          | "out_int" ->
+            output_string stdout (value_to_str (List.hd arg_vals));
+            so, s
+          | "in_string" -> 
+            let str = read_line() in
+            Cool_String(str), s
+          | "in_int" -> 
+            let i = Int32.of_string (read_line()) in
+            Cool_Int(i), s
+          | "length" -> (begin match List.hd arg_vals with
+            | Cool_String(str) -> Cool_Int(Int32.of_int (String.length str)), s
+            | _ -> failwith "str.len error" end)
+          | "concat" -> (begin match arg_vals with
+            | [Cool_String(s1); Cool_String(s2)] -> Cool_String(s1 ^ s2), s
+            | _ -> failwith "concat error" end)
+          | "substr" -> (begin match arg_vals with
+            | [Cool_String(s1); Cool_Int(i); Cool_Int(j)] -> Cool_String(String.sub s1 (Int32.to_int i) (Int32.to_int j)), s
+            | _ -> failwith "substring err" end)
+          | "abort" -> failwith "abort %d" eloc;
+          | "type_name" -> Cool_String(cname), s
+          | "copy" -> 
+            let new_store_updates = List.map (fun (aname, aaddr) -> 
+              let v = List.assoc aaddr !current_store in
+              (aaddr, v)
+            ) attrs_andlocs in
+            let new_store = !current_store @ new_store_updates in
+            Cool_Object(cname, attrs_andlocs), new_store
+          | _ ->  
+            let class_methods = List.assoc cname !impl_map in
+            let formals, body  = List.assoc fname class_methods in
+            let new_arg_locs = List.map (fun arg_val -> 
+              new_loc()
+            ) args in 
+            let store_updates = List.combine new_arg_locs arg_vals in
+            let s_n3 = store_updates @s in
+            eval v0 s_n3 attrs_andlocs body
+            end )
+      | _ -> 
+        debug "fname f out %s\n" fname; 
+        (begin match fname with 
+          | "out_string" ->
+            output_string stdout (value_to_str (List.hd arg_vals));
+            so, s
+          | "out_int" ->
+            output_string stdout (value_to_str (List.hd arg_vals));
+            so, s
+          | "in_string" -> 
+            let str = read_line() in
+            Cool_String(str), s
+          | "in_int" -> 
+            let i = Int32.of_string (read_line()) in
+            Cool_Int(i), s
+          | "length" -> (begin match List.hd arg_vals with
+            | Cool_String(str) -> Cool_Int(Int32.of_int (String.length str)), s
+            | _ -> failwith "str.len error" end)
+          | "concat" -> (begin match arg_vals with
+            | [Cool_String(s1); Cool_String(s2)] -> Cool_String(s1 ^ s2), s
+            | _ -> failwith "concat error" end)
+          | "substr" -> (begin match arg_vals with
+            | [Cool_String(s1); Cool_Int(i); Cool_Int(j)] -> Cool_String(String.sub s1 (Int32.to_int i) (Int32.to_int j)), s
+            | _ -> failwith "substring err" end)
+          | "abort" -> failwith "ABORT"
+          | "type_name" -> Cool_String(fname), s
+          (* CAN YOU HAVE COPY IN SELF DISPATCH ??*)
+          (* | "copy" -> 
+            let new_attrs_andlocs = List.map (fun (aname, aaddr) -> 
+              (aname, new_loc())
+            ) attrs_andlocs in
+            let new_store_updates = List.map (fun (aname, aaddr) -> 
+              let v = List.assoc aaddr !current_store in
+              (new_loc(), v)
+            ) new_attrs_andlocs in
+            let new_store = !current_store @ new_store_updates in
+            Cool_Object(cname, new_attrs_andlocs), new_store *)
+          | _ -> failwith "Not implemented %s" fname
         end)
-  | Self_Dispatch(fname, args) ->
-    let current_store = ref s in
-    let arg_vals = List.map (fun arg_exp -> 
-      let arg_val, arg_store = eval so !current_store env arg_exp in
-      current_store := arg_store;
-      arg_val
-    ) args in
-    debug "Self_Dispatch: %s\n" fname;
-    (match fname with 
-    | "out_string" -> (match List.hd arg_vals with
-      | Cool_String(str) -> Cool_String(str), s
-      | _ -> failwith "Type error")
-    )
-      (* |_ -> let v0, sn1 = eval so !current_store env (eloc, ) in
-      (begin match v0 with 
-        | Cool_Object(cname, attrs_andlocs) ->
-          (* FIX check to make sure it is in there if its not you have a pa5 bug *)
-          let class_methods = List.assoc cname !impl_map in
-          let formals, body  = List.assoc fname class_methods in
-          let new_arg_locs = List.map (fun arg_val -> 
-            new_loc()
-          ) args in 
-          let store_updates = List.combine new_arg_locs arg_vals in
-          let s_n3 = store_updates @sn1 in
-          eval v0 s_n3 attrs_andlocs body
-          v0, s_n3
-        | _ -> failwith "Type error"
-          end) *)
+      end)
   | String(str) -> Cool_String(str), s
-  | Internal(extra_info) -> 
-    debug "Internal: %s\n" extra_info;
-    (match extra_info with
-    | "IO.out_string" -> 
-      (* get first cool value from the store (at location 1001) *)
-      let v1 = List.assoc 1001 s in
-      v1, s
-    |_ -> failwith "Not implemented")
   | _ -> failwith "Not implemented"
   in
   debug_indent(); debug "result: %s\n" (value_to_str new_value);
   debug_indent(); debug "rets: %s\n\n" (store_to_str new_store);
   indent_count := !indent_count - 2; 
-  (new_value, new_store)
-
-
+  new_value, new_store
 let main() = begin
   let fname = Sys.argv.(1) in
   let ic = open_in fname in
@@ -541,7 +660,7 @@ let main() = begin
         let fname = read() in
         debug "DISPATCH fname: %s\n" fname;
         let args = read_list read_exp in
-        Dispatch(e0, fname, args)
+        Dispatch(Some(e0), fname, args)
       | "static_dispatch" ->
         let e0 = read_exp() in
         debug "STATIC DISPATCH e0: %s\n" (exp_to_str e0);
@@ -554,12 +673,12 @@ let main() = begin
         let mname = read() in
         debug "STATIC DISPATCH mname: %s\n" mname;
         let args = read_list read_exp in
-        Dispatch(e0, mname, args)
+        Dispatch(Some(e0), mname, args)
       | "self_dispatch" ->
         let mloc = read() in
         let mname = read() in
         let args = read_list read_exp in
-        Self_Dispatch(mname, args)
+        Dispatch(None,mname, args)
       | "variable" ->
         let vname = read() in
         Variable(vname)
@@ -582,15 +701,19 @@ let main() = begin
         let e1 = read_exp() in
         let e2 = read_exp() in
         Divide(e1, e2)
-      | "lessthan" ->
+      | "lt" ->
         let e1 = read_exp() in
         let e2 = read_exp() in
         LessThan(e1, e2)
-      | "equal" ->
+      | "le" ->
+        let e1 = read_exp() in
+        let e2 = read_exp() in
+        LessThanEq(e1, e2)
+      | "eq" ->
         let e1 = read_exp() in
         let e2 = read_exp() in
         Equal(e1, e2)
-      | "not" ->
+      | "negate" ->
         let e = read_exp() in
         Not(e)
       | "isvoid" ->
@@ -614,8 +737,8 @@ let main() = begin
         Let(bindings, e)
       | "case" ->
         let e = read_exp() in
-        let cl = read_list read_case_branch in
-        Case(e, cl)
+        let branches = read_list read_case_branch in
+        Case(e, branches)
       | "assign" ->
         let vname = read() in
         let eloc2 = read() in
@@ -629,6 +752,7 @@ let main() = begin
         Variable(vname)
       | "self" -> 
         let vname = read() in
+        debug "SELF vname: %s\n" vname;
         Variable(vname)
       | "true" -> 
         (* let vname = read() in *)
@@ -675,17 +799,32 @@ let main() = begin
   let main_id, main_parent, main_features = main_class in
   let main_method = List.find ( fun feature ->
     match feature with 
-    |Attribute _ -> 
-      false
-    |Method((_,mname), _, _, _) ->
-      mname = "main"
+    |Method((_,"main"), _, _, _) -> true
+    |_ -> false
     ) main_features in
   let main_body = match main_method with
   | Method(_, _, _, body) -> body
   | _ -> failwith "cannot happen"
   in
-  let (main_value : cool_value), _ = eval Void [] [] main_body in
+  (* need to evaluate attributes if they have expressions before evaluating the body of the main method *)
+  let env_ref = ref [] in
+  let store_ref = ref [] in
+  List.iter (fun feature ->
+    match feature with
+    | Attribute((_, attr_name), _, Some(attr_expr)) ->
+        let attr_value, new_store = eval Void !store_ref !env_ref attr_expr in
+        let new_loc = new_loc() in
+        env_ref := (attr_name, new_loc) :: !env_ref;
+        store_ref := (new_loc, attr_value) :: !store_ref;
+    | Attribute((_, _), _, None) -> () (* No expression to evaluate *)
+    | _ -> ()
+  ) main_features;
+  
+  (* Update the environment and store references *)
+  let updated_env = !env_ref in
+  let updated_store = !store_ref in
+  let (main_value : cool_value), _ = eval Void updated_store updated_env main_body in
   let (main_value_str : string)  = value_to_str main_value in
-  output_string stdout main_value_str
+  debug "main_value: %s\n" main_value_str;
 end ;;
 main() ;;
